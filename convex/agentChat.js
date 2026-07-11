@@ -2,7 +2,7 @@
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // ─────────────────────────────────────────────────────────────
 // Agent system prompts — each agent has a distinct identity
@@ -62,10 +62,8 @@ export const chat = action({
     careerContext: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = await ctx.auth.getUserIdentity();
-    if (!userId) throw new Error("Not authenticated");
-
-    const convexUserId = userId.subject;
+    const convexUserId = await ctx.runQuery(api.auth.getMyUserId);
+    if (!convexUserId) throw new Error("Not authenticated");
 
     // ── Input Validation ──
     const agentId = args.agentId.trim();

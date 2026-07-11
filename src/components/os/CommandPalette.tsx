@@ -12,7 +12,7 @@ import { springs } from "@/components/motion/primitives";
 interface CommandItem {
   label: string;
   href: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string }>;
   category: string;
 }
 
@@ -55,8 +55,10 @@ export function CommandPalette() {
   // Autofocus input when opened
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-      setSelectedIndex(0);
+      setTimeout(() => {
+        inputRef.current?.focus();
+        setSelectedIndex(0);
+      }, 50);
     }
   }, [isOpen]);
 

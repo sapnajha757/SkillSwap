@@ -9,6 +9,16 @@ import { Bell, UserPlus, MessageSquare, Cpu, Info, CheckCircle2 } from "lucide-r
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+interface NotificationItem {
+  _id: string;
+  isRead: boolean;
+  linkUrl?: string;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: number;
+}
+
 export function NotificationBell() {
   const { isAuthenticated } = useConvexAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -43,9 +53,9 @@ export function NotificationBell() {
 
   if (!isAuthenticated) return null;
 
-  const handleNotificationClick = async (notif: any) => {
+  const handleNotificationClick = async (notif: NotificationItem) => {
     if (!notif.isRead) {
-      await markAsRead({ notificationId: notif._id });
+      await markAsRead({ notificationId: notif._id as Parameters<typeof markAsRead>[0]["notificationId"] });
     }
     if (notif.linkUrl) {
       setIsOpen(false);
@@ -120,11 +130,11 @@ export function NotificationBell() {
               ) : notifications.length === 0 ? (
                 <div className="p-10 text-center flex flex-col items-center">
                   <Bell className="w-8 h-8 text-border-strong mb-3" />
-                  <p className="text-sm text-text-secondary">You're all caught up!</p>
+                  <p className="text-sm text-text-secondary">You&apos;re all caught up!</p>
                 </div>
               ) : (
                 <div className="divide-y divide-border-soft">
-                  {notifications.map((notif: any) => (
+                  {notifications.map((notif: NotificationItem) => (
                     <div
                       key={notif._id}
                       onClick={() => handleNotificationClick(notif)}

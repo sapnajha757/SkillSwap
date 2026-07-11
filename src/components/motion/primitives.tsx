@@ -490,8 +490,8 @@ export function MorphingNumber({
 
   useEffect(() => {
     if (shouldReduceMotion) {
-      setDisplay(value);
-      return;
+      const timer = setTimeout(() => setDisplay(value), 0);
+      return () => clearTimeout(timer);
     }
     motionValue.set(value);
   }, [value, motionValue, shouldReduceMotion]);

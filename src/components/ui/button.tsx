@@ -70,7 +70,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         transition={{ type: "spring", stiffness: 550, damping: 24, mass: 0.7 }}
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
-        {...(props as any)}
+        {...(props as unknown as React.ComponentPropsWithoutRef<typeof motion.button>)}
       >
         {children}
       </motion.button>

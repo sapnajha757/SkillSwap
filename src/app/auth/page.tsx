@@ -7,7 +7,7 @@ import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sparkles, BrainCircuit, Eye, EyeOff, ArrowRight } from "lucide-react";
 
-type Flow = "signIn" | "signUp";
+type Flow = "signIn" | "signUp" | "forgotPassword" | "resetPassword";
 
 // ── Botanical SVG decoration ──────────────────────────────────
 function BotanicalPanel() {
@@ -161,21 +161,43 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     setPending(true);
     const formData = new FormData(e.currentTarget);
-    formData.set("flow", flow);
+    
     try {
-      await signIn("password", formData);
-      router.push("/os");
-    } catch {
+      if (flow === "forgotPassword") {
+        const resetEmail = formData.get("email") as string;
+        setEmail(resetEmail);
+        await signIn("password", { email: resetEmail, flow: "reset" });
+        setFlow("resetPassword");
+      } else if (flow === "resetPassword") {
+        const resetCode = formData.get("code") as string;
+        const resetPassword = formData.get("newPassword") as string;
+        await signIn("password", {
+          email,
+          code: resetCode,
+          newPassword: resetPassword,
+          flow: "reset-verification"
+        });
+        router.push("/os");
+      } else {
+        formData.set("flow", flow);
+        await signIn("password", formData);
+        router.push("/os");
+      }
+    } catch (err: any) {
+      console.error("Auth error:", err);
       setError(
-        flow === "signIn"
-          ? "Invalid credentials. Please verify your email and password."
-          : "Could not create account. Please try a different email."
+        err instanceof Error ? err.message : (
+          flow === "signIn"
+            ? "Invalid credentials. Please verify your email and password."
+            : "Could not perform authentication. Please try again."
+        )
       );
     } finally {
       setPending(false);
@@ -227,7 +249,9 @@ export default function AuthPage() {
                   transition={{ duration: 0.25 }}
                   className="status-mono text-primary"
                 >
-                  {flow === "signIn" ? "System Access" : "Node Registration"}
+                  {flow === "signIn" ? "System Access" : 
+                   flow === "signUp" ? "Node Registration" :
+                   flow === "forgotPassword" ? "Password Recovery" : "Reset Authorization"}
                 </motion.span>
               </AnimatePresence>
             </div>
@@ -241,56 +265,115 @@ export default function AuthPage() {
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                 className="font-display text-4xl md:text-5xl font-semibold text-text-primary tracking-tight mb-3"
               >
-                {flow === "signIn" ? "Welcome back." : "Create your OS."}
+                {flow === "signIn" ? "Welcome back." : 
+                 flow === "signUp" ? "Create your OS." :
+                 flow === "forgotPassword" ? "Reset access." : "Set new password."}
               </motion.h1>
             </AnimatePresence>
 
             <p className="text-text-muted text-base leading-relaxed font-body">
-              {flow === "signIn"
-                ? "Re-enter your workspace. Your career graph awaits."
-                : "Join 4,291 builders growing with AI-powered career intelligence."}
+              {flow === "signIn" && "Re-enter your workspace. Your career graph awaits."}
+              {flow === "signUp" && "Join 4,291 builders growing with AI-powered career intelligence."}
+              {flow === "forgotPassword" && "Enter your email. We will send a secure verification code to authorize a password change."}
+              {flow === "resetPassword" && `Verify code and initialize your new password for ${email}.`}
             </p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
-            <div className="space-y-2">
-              <label className="status-mono text-text-faint">Email Address</label>
-              <input
-                id="auth-email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                required
-                autoComplete="email"
-                className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="space-y-2">
-              <label className="status-mono text-text-faint">Password</label>
-              <div className="relative">
+            {/* Email - Show in signIn, signUp, forgotPassword */}
+            {flow !== "resetPassword" && (
+              <div className="space-y-2">
+                <label className="status-mono text-text-faint">Email Address</label>
                 <input
-                  id="auth-password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••••••"
+                  id="auth-email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
                   required
-                  autoComplete={flow === "signIn" ? "current-password" : "new-password"}
-                  className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 pr-14 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
+                  autoComplete="email"
+                  defaultValue={email}
+                  className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
                 />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-primary transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
               </div>
-            </div>
+            )}
+
+            {/* Password - Show only in signIn and signUp */}
+            {(flow === "signIn" || flow === "signUp") && (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="status-mono text-text-faint">Password</label>
+                  {flow === "signIn" && (
+                    <button
+                      type="button"
+                      onClick={() => { setFlow("forgotPassword"); setError(""); }}
+                      className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    id="auth-password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••••••"
+                    required
+                    autoComplete={flow === "signIn" ? "current-password" : "new-password"}
+                    className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 pr-14 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-primary transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Verification Code - Show only in resetPassword */}
+            {flow === "resetPassword" && (
+              <div className="space-y-2">
+                <label className="status-mono text-text-faint">Verification Code</label>
+                <input
+                  id="auth-code"
+                  name="code"
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  required
+                  className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
+                />
+              </div>
+            )}
+
+            {/* New Password - Show only in resetPassword */}
+            {flow === "resetPassword" && (
+              <div className="space-y-2">
+                <label className="status-mono text-text-faint">New Password</label>
+                <div className="relative">
+                  <input
+                    id="auth-new-password"
+                    name="newPassword"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••••••"
+                    required
+                    className="w-full h-13 rounded-xl border border-border-strong/60 bg-surface-container-low/40 px-5 pr-14 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-primary/45 focus:border-primary/60 transition-all font-body glass-refract"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-primary transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Error */}
             <AnimatePresence>
@@ -325,11 +408,16 @@ export default function AuthPage() {
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                   />
-                  <span className="font-mono text-xs uppercase tracking-wide">Authenticating...</span>
+                  <span className="font-mono text-xs uppercase tracking-wide">Processing...</span>
                 </>
               ) : (
                 <>
-                  <span>{flow === "signIn" ? "Access Workspace" : "Initialize OS"}</span>
+                  <span>
+                    {flow === "signIn" && "Access Workspace"}
+                    {flow === "signUp" && "Initialize OS"}
+                    {flow === "forgotPassword" && "Send Reset Code"}
+                    {flow === "resetPassword" && "Update Password"}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -338,15 +426,42 @@ export default function AuthPage() {
 
           {/* Toggle */}
           <div className="mt-8 pt-6 border-t border-border-soft text-center text-xs text-text-muted font-body">
-            {flow === "signIn" ? "First time here?" : "Already have an account?"}{" "}
-            <button
-              type="button"
-              id="auth-toggle"
-              onClick={() => { setFlow(flow === "signIn" ? "signUp" : "signIn"); setError(""); }}
-              className="text-primary hover:text-primary/80 font-semibold transition-colors cursor-pointer"
-            >
-              {flow === "signIn" ? "Create your OS" : "Sign in"}
-            </button>
+            {flow === "signIn" && (
+              <>
+                First time here?{" "}
+                <button
+                  type="button"
+                  id="auth-toggle"
+                  onClick={() => { setFlow("signUp"); setError(""); }}
+                  className="text-primary hover:text-primary/80 font-semibold transition-colors cursor-pointer"
+                >
+                  Create your OS
+                </button>
+              </>
+            )}
+            {flow === "signUp" && (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  id="auth-toggle"
+                  onClick={() => { setFlow("signIn"); setError(""); }}
+                  className="text-primary hover:text-primary/80 font-semibold transition-colors cursor-pointer"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+            {(flow === "forgotPassword" || flow === "resetPassword") && (
+              <button
+                type="button"
+                id="auth-toggle"
+                onClick={() => { setFlow("signIn"); setError(""); }}
+                className="text-primary hover:text-primary/80 font-semibold transition-colors cursor-pointer"
+              >
+                Back to Sign In
+              </button>
+            )}
           </div>
         </motion.div>
       </div>
