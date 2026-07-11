@@ -129,7 +129,7 @@ export const sendAIPMMessage = mutation({
         name: "🤖 AI Teammate (PM)",
         bio: "Autonomous AI Project Manager and Tech Lead",
       });
-      aiUser = { _id: id } as any;
+      aiUser = { _id: id };
     }
 
     await ctx.db.insert("chatMessages", {
