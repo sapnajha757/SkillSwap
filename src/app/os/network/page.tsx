@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { OSLoader } from "@/components/os/OSShared";
 import {
   Users, Send, Search, Users2, UserSquare2, MessageSquare, 
-  Hash, ArrowRight, ShieldCheck, Zap
+  Hash, ArrowRight, ShieldCheck, Zap, Sparkles
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 export default function NetworkingPage() {
   // Data
@@ -166,14 +167,15 @@ function ChatRow({ icon, title, subtitle, isActive, onClick }: any) {
 }
 
 function ChatInterface({ threadId, name, type }: any) {
-  // To keep it simple, we'll determine "isMe" by checking if the message sender name matches ours, or just fetching profile.
-  // We'll use a hack: passing userId from server if needed, but for now we just rely on senderId matching a query if possible.
-  // Actually, getAuthUserId gives a token. Let's just use CSS generic layouts.
-
   const messages = useQuery(api.networking.getMessages, { threadId });
   const sendMessage = useMutation(api.networking.sendMessage);
+  const consultPM = useAction(api.hackathonsAI.consultAIPM);
+  
   const [input, setInput] = useState("");
+  const [consulting, setConsulting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const teamId = type === "Team Chat" ? (threadId.replace("team_", "") as Id<"hackathonTeams">) : null;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -185,16 +187,42 @@ function ChatInterface({ threadId, name, type }: any) {
     await sendMessage({ threadId, content: val });
   }
 
+  async function handleConsultPM() {
+    if (!teamId || consulting) return;
+    setConsulting(true);
+    try {
+      await consultPM({ threadId, teamId });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to consult AI PM teammate.");
+    } finally {
+      setConsulting(false);
+    }
+  }
+
   return (
     <>
-      <div className="px-6 py-4 border-b border-border-soft bg-background/50 backdrop-blur-xl absolute top-0 left-0 right-0 z-10 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-surface/80 border border-border-strong flex items-center justify-center">
-          {type === "Community" ? <Hash className="w-5 h-5 text-text-secondary" /> : <UserSquare2 className="w-5 h-5 text-text-secondary" />}
+      <div className="px-6 py-4 border-b border-border-soft bg-background/50 backdrop-blur-xl absolute top-0 left-0 right-0 z-10 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-surface/80 border border-border-strong flex items-center justify-center">
+            {type === "Community" ? <Hash className="w-5 h-5 text-text-secondary" /> : <UserSquare2 className="w-5 h-5 text-text-secondary" />}
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-white text-lg leading-tight">{name}</h3>
+            <span className="text-[10px] font-mono text-secondary uppercase tracking-widest flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" /> {type}</span>
+          </div>
         </div>
-        <div>
-          <h3 className="font-display font-bold text-white text-lg leading-tight">{name}</h3>
-          <span className="text-[10px] font-mono text-secondary uppercase tracking-widest flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" /> {type}</span>
-        </div>
+
+        {type === "Team Chat" && teamId && (
+          <button
+            onClick={handleConsultPM}
+            disabled={consulting}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs font-mono font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${consulting ? "animate-spin" : ""}`} />
+            {consulting ? "AI PM Analyzing..." : "Summon AI PM"}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 pt-24 space-y-4">
@@ -207,15 +235,20 @@ function ChatInterface({ threadId, name, type }: any) {
           <div className="h-full flex items-center justify-center text-text-faint text-sm font-mono">No messages yet. Say hello!</div>
         ) : (
           messages.map((m: any, i: number) => {
-            // Simplified: we won't perfectly know "isMe" without fetching my profile, 
-            // but we can assume consecutive messages from same person group together.
-            // Let's just style them all neutrally for a group chat, or right-align if senderName implies "me".
-            // Since we lack `isMe` easily, we'll left-align with names.
+            const isBot = m.senderName.includes("AI Teammate");
             return (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={m._id} className="flex flex-col items-start max-w-[80%]">
-                <span className="text-[10px] font-mono text-text-faint mb-1 ml-1">{m.senderName}</span>
-                <div className="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-surface/60 border border-border-soft text-sm text-white shadow-sm">
-                  {m.content}
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={m._id} className={`flex flex-col items-start ${isBot ? "max-w-[90%]" : "max-w-[80%]"}`}>
+                <span className={`text-[10px] font-mono mb-1 ml-1 ${isBot ? "text-primary font-bold" : "text-text-faint"}`}>{m.senderName}</span>
+                <div className={`px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm text-white shadow-sm prose prose-invert max-w-none ${
+                  isBot 
+                    ? "bg-primary/10 border border-primary/30 text-text-secondary" 
+                    : "bg-surface/60 border border-border-soft"
+                }`}>
+                  {isBot ? (
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </motion.div>
             );

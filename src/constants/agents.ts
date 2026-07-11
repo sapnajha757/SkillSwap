@@ -1,6 +1,6 @@
 import {
   BrainCircuit, FileText, Mic2, BookOpen,
-  Map, Briefcase, Zap, Users,
+  Map, Briefcase, Zap, Users, GraduationCap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -161,6 +161,24 @@ export const AGENTS: AgentDef[] = [
       "Write me a cold DM to a senior engineer at Google I want to learn from",
       "How do I prepare for an informational interview with a VC partner?",
       "I want to break into the AI startup scene — who should I be talking to?",
+    ],
+  },
+  {
+    id: "ai-tutor",
+    name: "AI Tutor",
+    tagline: "Interactive 1-on-1 learning",
+    description:
+      "Learns what you want to study, breaks it down, and guides you through custom lessons and interactive challenges.",
+    icon: GraduationCap,
+    color: "text-tertiary",
+    glow: "shadow-[0_0_30px_rgba(221,212,191,0.3)]",
+    border: "border-tertiary/30",
+    bg: "bg-tertiary/10",
+    gradient: "from-tertiary/20 to-tertiary/5",
+    starterPrompts: [
+      "Teach me how React Server Components work under the hood",
+      "I want to learn TypeScript Generics from basic to advanced",
+      "Explain the key concepts of Docker and containerization",
     ],
   },
 ];

@@ -72,6 +72,7 @@ export default function OSWorkspace() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [aiTutorTopic, setAiTutorTopic] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [processingStage, setProcessingStage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -204,7 +205,12 @@ export default function OSWorkspace() {
 
       {/* ── Spatial Canvas ── */}
       <div className="absolute inset-0 z-0 pt-12">
-        <CanvasNetwork nodes={nodes} matches={myMatches ?? []} onSelectMatch={setSelectedMatch} />
+        <CanvasNetwork
+          nodes={nodes}
+          matches={myMatches ?? []}
+          onSelectMatch={setSelectedMatch}
+          onSelectLearnNode={setAiTutorTopic}
+        />
       </div>
 
       {/* ── Omni-Prompt (Centered) ── */}
@@ -318,153 +324,327 @@ export default function OSWorkspace() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── AI Tutor Briefing Modal ── */}
+      <AnimatePresence>
+        {aiTutorTopic && (
+          <AITutorBriefing
+            topic={aiTutorTopic}
+            onClose={() => setAiTutorTopic(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// Canvas Network
-// PERF: The original implementation used useAnimationFrame + setState
-// which caused 60 full React re-renders per second. This version updates
-// DOM elements directly via refs, bypassing React's reconciler entirely.
-// Re-renders: 60/sec → 0/sec for animation. React only re-renders on
-// data changes (nodes/matches from Convex).
+// Canvas Network Cluster Force Simulation
 // ─────────────────────────────────────────────────────────────
+function getClusterCenter(skillName: string) {
+  const name = skillName.toLowerCase();
+  if (name.includes("react") || name.includes("next") || name.includes("html") || name.includes("css") || name.includes("tailwind") || name.includes("vue") || name.includes("angular") || name.includes("svelte") || name.includes("javascript") || name.includes("typescript") || name.includes("frontend") || name.includes("front")) {
+    return { x: 32, y: 32, name: "Frontend" };
+  }
+  if (name.includes("python") || name.includes("node") || name.includes("express") || name.includes("go") || name.includes("rust") || name.includes("java") || name.includes("docker") || name.includes("postgres") || name.includes("sql") || name.includes("mongodb") || name.includes("convex") || name.includes("backend") || name.includes("db") || name.includes("database")) {
+    return { x: 68, y: 32, name: "Backend" };
+  }
+  if (name.includes("machine") || name.includes("ml") || name.includes("ai") || name.includes("llama") || name.includes("pytorch") || name.includes("tensorflow") || name.includes("deep") || name.includes("nlp") || name.includes("data") || name.includes("intelligence")) {
+    return { x: 50, y: 72, name: "AI/ML" };
+  }
+  if (name.includes("figma") || name.includes("ux") || name.includes("ui") || name.includes("blender") || name.includes("design") || name.includes("graphic")) {
+    return { x: 28, y: 68, name: "Design" };
+  }
+  if (name.includes("flutter") || name.includes("react native") || name.includes("ios") || name.includes("android") || name.includes("swift") || name.includes("kotlin") || name.includes("mobile")) {
+    return { x: 72, y: 68, name: "Mobile" };
+  }
+  return { x: 50, y: 48, name: "General" };
+}
+
+interface PhysicsNode {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  targetX: number;
+  targetY: number;
+  phase: number;
+}
+
 const CanvasNetwork = React.memo(function CanvasNetwork({
   nodes,
   matches,
   onSelectMatch,
+  onSelectLearnNode,
 }: {
   nodes: CanvasNode[];
   matches: any[];
   onSelectMatch: (m: any) => void;
+  onSelectLearnNode: (label: string) => void;
 }) {
-  const t = useRef(0);
-  // Refs to each node DOM element — indexed by node id
-  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const rafRef = useRef<number | null>(null);
-
-  // Direct DOM animation — zero React re-renders
-  useEffect(() => {
-    function animate(delta: number) {
-      t.current = delta * 0.0003;
-      nodes.forEach((n) => {
-        const el = nodeRefs.current[n.id];
-        if (!el) return;
-        const x = Math.sin(t.current + n.phase) * 1.2;
-        const y = Math.cos(t.current + n.phase * 1.3) * 1.2;
-        // Direct style mutation — no React reconciliation
-        el.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
-      });
-      rafRef.current = requestAnimationFrame(animate);
-    }
-    rafRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [nodes]); // Only re-subscribe when nodes array changes
-
   const proposedMatches = matches.filter((m) => m.status === "proposed");
 
+  // Build physical nodes (own nodes + matched peers)
+  const visualNodes = React.useMemo(() => {
+    const list: Array<{
+      id: string;
+      label: string;
+      intentType: "teach" | "learn";
+      isPeer: boolean;
+      match?: any;
+    }> = nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      intentType: n.intentType,
+      isPeer: false,
+    }));
+
+    proposedMatches.forEach((m) => {
+      const ownTeach = nodes.some((n) => n.id === m.teachPostId);
+      const ownLearn = nodes.some((n) => n.id === m.learnPostId);
+
+      if (ownTeach && !ownLearn) {
+        const peerId = `peer-${m.learnPostId}`;
+        if (!list.some((n) => n.id === peerId)) {
+          list.push({
+            id: peerId,
+            label: `${m.learnSkill} (Match)`,
+            intentType: "learn",
+            isPeer: true,
+            match: m,
+          });
+        }
+      } else if (ownLearn && !ownTeach) {
+        const peerId = `peer-${m.teachPostId}`;
+        if (!list.some((n) => n.id === peerId)) {
+          list.push({
+            id: peerId,
+            label: `${m.teachSkill} (Match)`,
+            intentType: "teach",
+            isPeer: true,
+            match: m,
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [nodes, proposedMatches]);
+
+  const physicsNodesRef = useRef<Record<string, PhysicsNode>>({});
+  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const lineRefs = useRef<Record<string, SVGLineElement | null>>({});
+  const draggedNodeIdRef = useRef<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  // Initialize and update positions ref
+  useEffect(() => {
+    visualNodes.forEach((vn) => {
+      const center = getClusterCenter(vn.label);
+      if (!physicsNodesRef.current[vn.id]) {
+        const matchNode = nodes.find(n => n.id === vn.id);
+        physicsNodesRef.current[vn.id] = {
+          x: matchNode ? matchNode.x : center.x + (Math.random() - 0.5) * 15,
+          y: matchNode ? matchNode.y : center.y + (Math.random() - 0.5) * 15,
+          vx: 0,
+          vy: 0,
+          targetX: center.x,
+          targetY: center.y,
+          phase: Math.random() * Math.PI * 2,
+        };
+      } else {
+        physicsNodesRef.current[vn.id].targetX = center.x;
+        physicsNodesRef.current[vn.id].targetY = center.y;
+      }
+    });
+  }, [visualNodes, nodes]);
+
+  // Main simulation loop
+  useEffect(() => {
+    function animate() {
+      visualNodes.forEach((n) => {
+        const pn = physicsNodesRef.current[n.id];
+        const el = nodeRefs.current[n.id];
+        if (!pn || !el) return;
+
+        // Force 1: Attraction to category target center
+        const pullStrength = 0.02;
+        pn.vx += (pn.targetX - pn.x) * pullStrength;
+        pn.vy += (pn.targetY - pn.y) * pullStrength;
+
+        // Force 2: Repulsion from other nodes to avoid overlap
+        visualNodes.forEach((other) => {
+          if (other.id === n.id) return;
+          const po = physicsNodesRef.current[other.id];
+          if (!po) return;
+          const dx = pn.x - po.x;
+          const dy = pn.y - po.y;
+          const distSqr = dx * dx + dy * dy + 0.1;
+          const dist = Math.sqrt(distSqr);
+          if (dist < 18) {
+            const force = (18 - dist) * 0.05;
+            pn.vx += (dx / dist) * force;
+            pn.vy += (dy / dist) * force;
+          }
+        });
+
+        // Damping / friction
+        pn.vx *= 0.75;
+        pn.vy *= 0.75;
+
+        // Apply velocities if not dragged
+        if (draggedNodeIdRef.current !== n.id) {
+          pn.x += pn.vx;
+          pn.y += pn.vy;
+        }
+
+        // Boundary constraint
+        pn.x = Math.max(8, Math.min(92, pn.x));
+        pn.y = Math.max(12, Math.min(88, pn.y));
+
+        // Direct DOM update
+        el.style.left = `${pn.x}%`;
+        el.style.top = `${pn.y}%`;
+      });
+
+      // Update lines between matched nodes
+      proposedMatches.forEach((m) => {
+        const lineEl = lineRefs.current[m._id];
+        if (!lineEl) return;
+        const ownTeach = physicsNodesRef.current[m.teachPostId];
+        const ownLearn = physicsNodesRef.current[m.learnPostId];
+        const peerTeach = physicsNodesRef.current[`peer-${m.teachPostId}`];
+        const peerLearn = physicsNodesRef.current[`peer-${m.learnPostId}`];
+
+        const teachNode = ownTeach || peerTeach;
+        const learnNode = ownLearn || peerLearn;
+
+        if (teachNode && learnNode) {
+          lineEl.setAttribute("x1", `${teachNode.x}%`);
+          lineEl.setAttribute("y1", `${teachNode.y}%`);
+          lineEl.setAttribute("x2", `${learnNode.x}%`);
+          lineEl.setAttribute("y2", `${learnNode.y}%`);
+        }
+      });
+
+      rafRef.current = requestAnimationFrame(animate);
+    }
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [visualNodes, proposedMatches]);
+
+  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    draggedNodeIdRef.current = id;
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!draggedNodeIdRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    const pn = physicsNodesRef.current[draggedNodeIdRef.current];
+    if (pn) {
+      pn.x = Math.max(5, Math.min(95, x));
+      pn.y = Math.max(10, Math.min(90, y));
+      pn.vx = 0;
+      pn.vy = 0;
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    draggedNodeIdRef.current = null;
+  };
+
+  const handleClickNode = (vn: typeof visualNodes[0]) => {
+    if (vn.isPeer) {
+      onSelectMatch(vn.match);
+    } else if (vn.intentType === "learn") {
+      onSelectLearnNode(vn.label);
+    }
+  };
+
   return (
-    <div className="w-full h-full relative">
+    <div
+      className="w-full h-full relative"
+      onMouseMove={handleCanvasMouseMove}
+      onMouseUp={handleCanvasMouseUp}
+      onMouseLeave={handleCanvasMouseUp}
+    >
+      {/* Dynamic Cluster Labels */}
+      <div className="absolute inset-0 pointer-events-none z-0 opacity-40">
+        <div className="absolute top-[20%] left-[20%] font-mono text-[10px] tracking-[0.2em] text-primary uppercase">Frontend Hub</div>
+        <div className="absolute top-[20%] right-[20%] font-mono text-[10px] tracking-[0.2em] text-secondary uppercase">Backend Core</div>
+        <div className="absolute bottom-[20%] left-[45%] font-mono text-[10px] tracking-[0.2em] text-tertiary uppercase">AI / ML Engine</div>
+        <div className="absolute bottom-[20%] left-[15%] font-mono text-[10px] tracking-[0.2em] text-primary/80 uppercase">Design Lab</div>
+        <div className="absolute bottom-[20%] right-[15%] font-mono text-[10px] tracking-[0.2em] text-secondary/80 uppercase">Mobile Dev</div>
+      </div>
+
       {/* SVG Connection Lines */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" aria-hidden="true">
         <defs>
           <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#b6dec3" stopOpacity="0.6" />
-            <stop offset="100%" stopColor="#cebef9" stopOpacity="0.6" />
+            <stop offset="0%" stopColor="#b6dec3" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#cebef9" stopOpacity="0.8" />
           </linearGradient>
           <filter id="glow">
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
-        {proposedMatches.slice(0, 5).map((_, i) => (
-          <motion.line
-            key={i}
-            x1={`${20 + i * 15}%`} y1="50%"
+        {proposedMatches.map((m) => (
+          <line
+            key={m._id}
+            ref={(el) => { lineRefs.current[m._id] = el; }}
+            x1="50%" y1="50%"
             x2="50%" y2="50%"
             stroke="url(#edgeGrad)"
-            strokeWidth="1.5"
+            strokeWidth="2.5"
             strokeDasharray="6 4"
             filter="url(#glow)"
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={{ pathLength: 1, opacity: 0.5 }}
-            transition={{ duration: 2, delay: i * 0.3 }}
+            className="transition-all duration-300"
           />
         ))}
       </svg>
 
-      {/* Intent Nodes (User's Posts) */}
+      {/* Intent & Match Nodes */}
       <AnimatePresence>
-        {nodes.map((node) => (
+        {visualNodes.map((node) => (
           <motion.div
             key={node.id}
+            ref={(el) => { nodeRefs.current[node.id] = el; }}
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="absolute z-10 pointer-events-auto"
+            onMouseDown={(e) => handleMouseDown(e, node.id)}
+            onClick={() => handleClickNode(node)}
+            className="absolute z-10 pointer-events-auto cursor-pointer"
             style={{
-              top: `${node.y}%`,
-              left: `${node.x}%`,
-              // Initial transform — rAF will override from here
               transform: "translate(-50%, -50%)",
-              willChange: "transform",
+              willChange: "left, top",
             }}
           >
-            {/* Inner ref target for direct DOM animation */}
             <div
-              ref={(el) => { nodeRefs.current[node.id] = el; }}
-              style={{ transform: "translate(-50%, -50%)", position: "absolute" }}
+              className={`group flex items-center gap-2.5 px-4.5 py-3 rounded-2xl backdrop-blur-xl border select-none transition-all shadow-lg active:scale-95 ${
+                node.isPeer
+                  ? "bg-surface/80 border-dashed border-tertiary/70 text-tertiary shadow-[0_0_25px_rgba(221,212,191,0.2)] hover:border-tertiary hover:shadow-[0_0_40px_rgba(221,212,191,0.4)]"
+                  : node.intentType === "teach"
+                  ? "bg-secondary/15 border-secondary/30 text-secondary hover:bg-secondary/25 hover:border-secondary/60 hover:shadow-[0_0_30px_rgba(206,190,249,0.35)]"
+                  : "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25 hover:border-primary/60 hover:shadow-[0_0_30px_rgba(182,222,195,0.35)]"
+              }`}
             >
-              <div
-                className={`group flex items-center gap-2 px-4 py-2.5 rounded-full backdrop-blur-md border cursor-default hover:scale-105 transition-transform ${
-                  node.intentType === "teach"
-                    ? "bg-secondary/10 border-secondary/30 text-secondary hover:bg-secondary/20 hover:border-secondary/50"
-                    : "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
-                }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full flex-shrink-0 ${node.intentType === "teach" ? "bg-secondary" : "bg-primary"} animate-pulse`}
-                />
-                <span className="text-sm font-display font-medium">{node.label}</span>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-
-      {/* Match Orbs (Peer nodes from AI) */}
-      <AnimatePresence>
-        {proposedMatches.map((match, i) => (
-          <motion.div
-            key={match._id}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1, y: [0, -15, 0] }}
-            transition={{
-              scale: { type: "spring", stiffness: 300, damping: 20, delay: i * 0.2 },
-              opacity: { delay: i * 0.2 },
-              y: { repeat: Infinity, duration: 4 + i, ease: "easeInOut", delay: i * 0.5 },
-            }}
-            className="absolute z-20 pointer-events-auto cursor-pointer"
-            style={{
-              top: `${25 + i * 15}%`,
-              right: `${10 + i * 5}%`,
-              willChange: "transform",
-            }}
-            onClick={() => onSelectMatch(match)}
-          >
-            <div className="relative">
-              <div className="absolute -inset-2 rounded-full bg-secondary/10 animate-ping opacity-75" aria-hidden="true" />
-              <div className="w-20 h-20 rounded-full bg-secondary/15 border-2 border-secondary/60 flex items-center justify-center shadow-[0_0_40px_rgba(206,190,249,0.3)] hover:shadow-[0_0_60px_rgba(206,190,249,0.5)] hover:scale-110 transition-transform">
-                <span className="font-display font-bold text-secondary text-lg">
-                  {match.compatibilityScore}
-                </span>
-              </div>
-              <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-mono text-secondary/80">
-                Peer Match
+              {node.isPeer ? (
+                <div className="w-2.5 h-2.5 rounded-full bg-tertiary animate-pulse" />
+              ) : (
+                <div className={`w-2 h-2 rounded-full ${node.intentType === "teach" ? "bg-secondary" : "bg-primary"} animate-pulse`} />
+              )}
+              <div className="text-sm font-display font-bold">
+                {node.label}
               </div>
             </div>
           </motion.div>
@@ -647,6 +827,92 @@ function MatchBriefing({ match, onClose }: { match: Match; onClose: () => void }
             style={{ willChange: "transform" }}
           >
             {pending === "accept" ? "Syncing..." : "Initialize Sync →"}
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AI Tutor Briefing Modal
+// ─────────────────────────────────────────────────────────────
+function AITutorBriefing({ topic, onClose }: { topic: string; onClose: () => void }) {
+  const router = useRouter();
+  const shouldReduceMotion = useReducedMotion();
+
+  function handleInitializeTutor() {
+    router.push(`/os/agents/ai-tutor?topic=${encodeURIComponent(topic)}`);
+    onClose();
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-background/70 backdrop-blur-2xl"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 40 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 40 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className="w-full max-w-lg glass-panel rounded-3xl p-10 border border-border-strong shadow-[0_60px_120px_-20px_rgba(0,0,0,0.9)] relative"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 text-text-faint hover:text-white transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Header */}
+        <div className="flex items-center gap-5 mb-8">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-primary/5 border border-primary/50 flex items-center justify-center shadow-[0_0_30px_rgba(182,222,195,0.3)]">
+            <Sparkles className="text-primary w-7 h-7" />
+          </div>
+          <div>
+            <h3 className="text-3xl font-display font-bold text-white">AI Tutor Engine</h3>
+            <p className="text-primary font-mono text-sm mt-1">
+              Personalized Learning Lab
+            </p>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-6 rounded-2xl bg-surface/50 border border-border-soft mb-8 relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary" />
+          <div className="flex items-center gap-2 mb-3">
+            <BrainCircuit className="w-4 h-4 text-primary" />
+            <span className="text-xs font-mono text-text-faint uppercase tracking-widest">
+              AI Classroom Overview
+            </span>
+          </div>
+          <p className="text-base text-text-primary leading-relaxed">
+            No matching peer tutors are online for <strong className="text-primary">{topic}</strong>. Initialize a 1-on-1 session with the AI Tutor to start learning right now.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-4">
+          <motion.button
+            whileHover={shouldReduceMotion ? {} : { scale: 1.015 }}
+            whileTap={shouldReduceMotion ? {} : { scale: 0.97 }}
+            transition={springs.snappy}
+            onClick={onClose}
+            className="flex-1 h-14 rounded-xl border border-border-strong text-text-secondary hover:text-white hover:bg-surface/50 transition-colors font-medium"
+          >
+            Cancel
+          </motion.button>
+          <motion.button
+            whileHover={shouldReduceMotion ? {} : { scale: 1.015 }}
+            whileTap={shouldReduceMotion ? {} : { scale: 0.97 }}
+            transition={springs.snappy}
+            onClick={handleInitializeTutor}
+            className="flex-[2] h-14 rounded-xl bg-gradient-to-br from-primary to-sage-dim text-on-primary font-bold text-base shadow-[0_0_30px_rgba(182,222,195,0.25)] hover:shadow-[0_0_50px_rgba(182,222,195,0.4)] transition-shadow uppercase tracking-wide"
+          >
+            Launch AI Tutor →
           </motion.button>
         </div>
       </motion.div>

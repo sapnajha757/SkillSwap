@@ -108,6 +108,39 @@ export const sendMessage = mutation({
   },
 });
 
+// ── Realtime Chat: Send AI PM Message ────────────────────────
+export const sendAIPMMessage = mutation({
+  args: {
+    threadId: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    let aiUser = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("email"), "ai-teammate@skillswap.os"))
+      .first();
+
+    if (!aiUser) {
+      const id = await ctx.db.insert("users", {
+        email: "ai-teammate@skillswap.os",
+      });
+      await ctx.db.insert("profiles", {
+        userId: id,
+        name: "🤖 AI Teammate (PM)",
+        bio: "Autonomous AI Project Manager and Tech Lead",
+      });
+      aiUser = { _id: id } as any;
+    }
+
+    await ctx.db.insert("chatMessages", {
+      threadId: args.threadId,
+      senderId: aiUser._id,
+      content: args.content,
+      createdAt: Date.now(),
+    });
+  },
+});
+
 // ── Communities: List & Join ──────────────────────────────────
 export const listCommunities = query({
   args: {},

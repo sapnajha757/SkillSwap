@@ -12,6 +12,7 @@ export default defineSchema({
     name: v.string(),
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    credits: v.optional(v.number()),
   }).index("by_userId", ["userId"]),
 
   // A post: either "teach" or "learn" a skill
@@ -233,4 +234,12 @@ export default defineSchema({
     notes: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_investor", ["investorId"]),
+
+  // Real-time Collaborative Session Rooms
+  sessionRooms: defineTable({
+    sessionId: v.id("sessions"),
+    code: v.string(),
+    language: v.string(),
+    whiteboardPathsJson: v.string(),
+  }).index("by_sessionId", ["sessionId"]),
 });

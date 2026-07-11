@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useAction } from "convex/react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { getAgent } from "@/constants/agents";
@@ -20,6 +20,8 @@ import ReactMarkdown from "react-markdown";
 export default function AgentChatPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
+  const topic = searchParams ? searchParams.get("topic") : null;
   const agentId = params.agentId as string;
   const agent = getAgent(agentId);
 
@@ -50,6 +52,62 @@ export default function AgentChatPage() {
   const careerStats = useQuery(api.profiles.myCareerStats);
 
   const chatAction = useAction(api.agentChat.chat);
+
+  // Auto-send first message if a topic is specified and conversation is empty
+  const autoTriggerRef = useRef(false);
+  useEffect(() => {
+    if (topic && localMessages.length === 0 && !isThinking && !autoTriggerRef.current) {
+      autoTriggerRef.current = true;
+      const initialPrompt = `I want to learn ${topic}. Please start our interactive tutoring session!`;
+      
+      const sendInitial = async () => {
+        setIsThinking(true);
+        const userText = initialPrompt;
+        const userMsgId = `opt-user-${Date.now()}`;
+        setLocalMessages([{ role: "user", content: userText, id: userMsgId }]);
+
+        // Build career context string from stats
+        const contextStr = careerStats
+          ? [
+              careerStats.teachSkills.length > 0
+                ? `Teaching: ${careerStats.teachSkills.map((s: any) => s.skill).join(", ")}`
+                : null,
+              careerStats.learnSkills.length > 0
+                ? `Learning: ${careerStats.learnSkills.map((s: any) => s.skill).join(", ")}`
+                : null,
+              `Matches: ${careerStats.totalMatches} total, ${careerStats.acceptedMatches} accepted`,
+            ]
+              .filter(Boolean)
+              .join(" | ")
+          : undefined;
+
+        try {
+          const result = await chatAction({
+            agentId,
+            conversationId,
+            userMessage: userText,
+            careerContext: contextStr,
+          });
+
+          if (!conversationId) {
+            setConversationId(result.conversationId);
+          }
+
+          setLocalMessages([
+            { role: "user", content: userText, id: `user-${Date.now()}` },
+            { role: "assistant", content: result.assistantContent, id: `ai-${Date.now()}` },
+          ]);
+        } catch (err) {
+          console.error(err);
+          setLocalMessages([]);
+        } finally {
+          setIsThinking(false);
+        }
+      };
+
+      sendInitial();
+    }
+  }, [topic, localMessages.length, isThinking, conversationId, agentId, careerStats, chatAction]);
 
   // On mount: load existing conversation
   useEffect(() => {

@@ -167,3 +167,53 @@ export const seed = mutation({
     });
   },
 });
+
+// ── Get Team Details (Internal Query for AI PM Action) ─────────
+export const getTeamDetailsInternal = query({
+  args: { teamId: v.id("hackathonTeams") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.teamId);
+  },
+});
+
+// ── Invite Teammate to a Team ──────────────────────────────────
+export const inviteTeammate = mutation({
+  args: {
+    teamId: v.id("hackathonTeams"),
+    userId: v.id("users"),
+    role: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const creatorId = await getAuthUserId(ctx);
+    if (!creatorId) throw new Error("Not authenticated");
+
+    const team = await ctx.db.get(args.teamId);
+    if (!team || team.creatorId !== creatorId) throw new Error("Unauthorized");
+
+    const existing = await ctx.db
+      .query("hackathonMembers")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId).eq("userId", args.userId))
+      .first();
+
+    if (existing) throw new Error("Already a member or invited");
+
+    await ctx.db.insert("hackathonMembers", {
+      teamId: args.teamId,
+      userId: args.userId,
+      role: args.role,
+      status: "pending",
+      createdAt: Date.now(),
+    });
+
+    // Also send an invitation notification to the user
+    await ctx.db.insert("notifications", {
+      userId: args.userId,
+      title: "Hackathon Team Invitation",
+      message: `You have been invited to join the team "${team.name}" as a ${args.role}!`,
+      type: "match_request",
+      linkUrl: "/os/hackathons",
+      isRead: false,
+      createdAt: Date.now(),
+    });
+  },
+});

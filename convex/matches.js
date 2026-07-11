@@ -37,8 +37,20 @@ export const myMatches = query({
     if (!userId) return [];
 
     const allMatches = await ctx.db.query("matches").order("desc").collect();
-    return allMatches.filter(
+    const filtered = allMatches.filter(
       (m) => m.teacherId === userId || m.learnerId === userId
+    );
+
+    return await Promise.all(
+      filtered.map(async (m) => {
+        const teach = await ctx.db.get(m.teachPostId);
+        const learn = await ctx.db.get(m.learnPostId);
+        return {
+          ...m,
+          teachSkill: teach?.skill || "Unknown",
+          learnSkill: learn?.skill || "Unknown",
+        };
+      })
     );
   },
 });

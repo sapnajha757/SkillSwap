@@ -7,13 +7,15 @@ import { api } from "../../../../convex/_generated/api";
 import { OSLoader } from "@/components/os/OSShared";
 import { StaggerGroup, StaggerItem, MorphingNumber, AIPulse, ElevatedCard, springs } from "@/components/motion/primitives";
 import { 
-  BarChart3, Eye, Target, Clock, TrendingUp, Sparkles, BrainCircuit, Activity 
+  BarChart3, Eye, Target, Clock, TrendingUp, Sparkles, BrainCircuit, Activity, Award, Coins
 } from "lucide-react";
 
 export default function AnalyticsPage() {
   const seed = useMutation(api.analytics.seed);
   const data = useQuery(api.analytics.getMyAnalytics);
   const careerStats = useQuery(api.profiles.myCareerStats);
+  const profile = useQuery(api.profiles.myProfile);
+  const leaderboard = useQuery(api.profiles.getLeaderboard);
   const generateInsights = useAction(api.analyticsAI.generateInsights);
 
   const [insights, setInsights] = useState<any>(null);
@@ -48,6 +50,30 @@ export default function AnalyticsPage() {
 
   if (data === undefined) return <OSLoader label="Retrieving Career Analytics..." />;
 
+  // Achievements evaluation
+  const credits = profile?.profile?.credits ?? 100;
+  const completedSessions = careerStats?.sessions ?? 0;
+  const achievements = [
+    {
+      id: "first_swap",
+      title: "First Swap Completed",
+      desc: "Hosted or joined 1 live tutoring session.",
+      unlocked: completedSessions >= 1,
+    },
+    {
+      id: "credit_tycoon",
+      title: "Credit Tycoon",
+      desc: "Acquired a total balance of 150 Swap Credits.",
+      unlocked: credits >= 150,
+    },
+    {
+      id: "mentor_badge",
+      title: "Active Mentor",
+      desc: "Registered at least one skill to teach peers.",
+      unlocked: (careerStats?.teachSkills?.length ?? 0) > 0,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-background overflow-x-hidden pb-32">
       {/* Ambient */}
@@ -71,91 +97,151 @@ export default function AnalyticsPage() {
         </motion.div>
 
         {/* Top KPIs */}
-        <StaggerGroup className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <StaggerGroup className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <StaggerItem><StatCard icon={<Coins />} title="Swap Credits" value={credits} trend="P2P Tokens" color="text-primary" bg="bg-primary/10" border="border-primary/20" /></StaggerItem>
           <StaggerItem><StatCard icon={<Eye />} title="Profile Views" value={data?.profileViews || 0} trend="+12%" color="text-tertiary" bg="bg-tertiary/10" border="border-tertiary/20" /></StaggerItem>
           <StaggerItem><StatCard icon={<Target />} title="Match Success" value={data?.matchSuccessRate || 0} suffix="%" trend="+5%" color="text-secondary" bg="bg-secondary/10" border="border-secondary/20" /></StaggerItem>
           <StaggerItem><StatCard icon={<Clock />} title="Learning Hours" value={data?.learningHours || 0} suffix="h" trend="+18%" color="text-primary" bg="bg-primary/10" border="border-primary/20" /></StaggerItem>
         </StaggerGroup>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
-          {/* Main Chart Area */}
-          <div className="glass-panel rounded-3xl border border-border-strong p-8">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="font-display text-xl font-bold text-white flex items-center gap-2"><Activity className="w-5 h-5 text-text-faint" /> Weekly Activity</h3>
-            </div>
-            <div className="h-64 flex items-end justify-between gap-2 px-4">
-              {data?.weeklyActivity?.map((val: number, i: number) => {
-                const max = Math.max(...data.weeklyActivity);
-                const height = max === 0 ? 0 : (val / max) * 100;
-                return (
-                  <div key={i} className="w-full flex flex-col items-center gap-3 group">
-                    <div className="w-full bg-surface/50 rounded-t-lg relative overflow-hidden h-full flex items-end">
-                      <motion.div 
-                        initial={{ height: 0 }} animate={{ height: `${height}%` }} transition={{ delay: i * 0.1, duration: 0.8, ease: "easeOut" }}
-                        className="w-full bg-gradient-to-t from-secondary/40 to-secondary/80 rounded-t-lg group-hover:to-secondary transition-colors"
-                      />
+          {/* Main Chart Area + Achievements */}
+          <div className="space-y-8">
+            {/* Chart */}
+            <div className="glass-panel rounded-3xl border border-border-strong p-8">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="font-display text-xl font-bold text-white flex items-center gap-2"><Activity className="w-5 h-5 text-text-faint" /> Weekly Activity</h3>
+              </div>
+              <div className="h-64 flex items-end justify-between gap-2 px-4">
+                {data?.weeklyActivity?.map((val: number, i: number) => {
+                  const max = Math.max(...data.weeklyActivity);
+                  const height = max === 0 ? 0 : (val / max) * 100;
+                  return (
+                    <div key={i} className="w-full flex flex-col items-center gap-3 group">
+                      <div className="w-full bg-surface/50 rounded-t-lg relative overflow-hidden h-full flex items-end">
+                        <motion.div 
+                          initial={{ height: 0 }} animate={{ height: `${height}%` }} transition={{ delay: i * 0.1, duration: 0.8, ease: "easeOut" }}
+                          className="w-full bg-gradient-to-t from-secondary/40 to-secondary/80 rounded-t-lg group-hover:to-secondary transition-colors"
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono text-text-faint uppercase">Day {i+1}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-text-faint uppercase">Day {i+1}</span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Achievements */}
+            <div className="glass-panel rounded-3xl border border-border-strong p-8">
+              <h3 className="font-display text-xl font-bold text-white mb-6 flex items-center gap-2">
+                <Award className="w-5 h-5 text-primary" /> Unlocked Achievements
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {achievements.map((ach) => (
+                  <div 
+                    key={ach.id} 
+                    className={`p-5 rounded-2xl border transition-all ${
+                      ach.unlocked 
+                        ? "bg-primary/5 border-primary/30" 
+                        : "bg-surface/10 border-border-soft opacity-60"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded ${
+                        ach.unlocked ? "bg-primary/20 text-primary" : "bg-surface text-text-faint"
+                      }`}>
+                        {ach.unlocked ? "Unlocked" : "Locked"}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-white text-sm mb-1">{ach.title}</h4>
+                    <p className="text-xs text-text-secondary leading-relaxed">{ach.desc}</p>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* AI Insights Panel */}
-          <div className="glass-panel rounded-3xl border border-border-strong overflow-hidden relative flex flex-col">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/10 blur-[40px] rounded-full pointer-events-none" />
-            <div className="p-6 border-b border-border-soft flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center border border-border-strong">
-                <BrainCircuit className="w-4 h-4 text-secondary" />
-              </div>
-              <h3 className="font-display font-bold text-white">AI Market Insights</h3>
-            </div>
-            
-            <div className="p-6 flex-1 bg-surface/20">
-              {loadingInsights ? (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-10">
-                  <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-mono text-secondary animate-pulse">Analyzing skill graph...</p>
+          {/* Sidebar Panels (AI Insights + Leaderboard) */}
+          <div className="space-y-8">
+            {/* AI Insights Panel */}
+            <div className="glass-panel rounded-3xl border border-border-strong overflow-hidden relative flex flex-col">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/10 blur-[40px] rounded-full pointer-events-none" />
+              <div className="p-6 border-b border-border-soft flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center border border-border-strong">
+                  <BrainCircuit className="w-4 h-4 text-secondary" />
                 </div>
-              ) : !insights ? (
-                <div className="text-center py-10 text-text-faint text-sm">Failed to load insights.</div>
-              ) : (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-                  {/* Market Demand Score */}
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-surface/60 border border-border-soft">
-                    <div className="w-16 h-16 rounded-full border-4 border-surface flex items-center justify-center relative overflow-hidden">
-                      <svg className="absolute inset-0 w-full h-full -rotate-90">
-                        <circle cx="28" cy="28" r="26" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-border-strong" />
-                        <circle cx="28" cy="28" r="26" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray="163.3" strokeDashoffset={163.3 - (163.3 * insights.demandScore) / 100} className="text-secondary transition-all duration-1000" />
-                      </svg>
-                      <span className="font-bold text-white z-10 text-sm">{insights.demandScore}</span>
+                <h3 className="font-display font-bold text-white">AI Market Insights</h3>
+              </div>
+              
+              <div className="p-6 flex-1 bg-surface/20">
+                {loadingInsights ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-10">
+                    <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-mono text-secondary animate-pulse">Analyzing skill graph...</p>
+                  </div>
+                ) : !insights ? (
+                  <div className="text-center py-10 text-text-faint text-sm">Failed to load insights.</div>
+                ) : (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                    {/* Market Demand Score */}
+                    <div className="flex items-center gap-4 p-4 rounded-2xl bg-surface/60 border border-border-soft">
+                      <div className="w-16 h-16 rounded-full border-4 border-surface flex items-center justify-center relative overflow-hidden">
+                        <svg className="absolute inset-0 w-full h-full -rotate-90">
+                          <circle cx="28" cy="28" r="26" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-border-strong" />
+                          <circle cx="28" cy="28" r="26" fill="transparent" stroke="currentColor" strokeWidth="4" strokeDasharray="163.3" strokeDashoffset={163.3 - (163.3 * insights.demandScore) / 100} className="text-secondary transition-all duration-1000" />
+                        </svg>
+                        <span className="font-bold text-white z-10 text-sm">{insights.demandScore}</span>
+                      </div>
+                      <div>
+                        <div className="text-xs font-mono text-text-faint uppercase mb-1">Market Demand</div>
+                        <div className="text-sm text-text-secondary leading-tight">{insights.marketTrend}</div>
+                      </div>
                     </div>
+
+                    {/* Next Skills */}
                     <div>
-                      <div className="text-xs font-mono text-text-faint uppercase mb-1">Market Demand</div>
-                      <div className="text-sm text-text-secondary leading-tight">{insights.marketTrend}</div>
+                      <h4 className="text-xs font-mono text-text-faint uppercase mb-3 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5" /> Recommended Next Skills</h4>
+                      <div className="space-y-3">
+                        {insights.nextSkillRecommendations.map((rec: any, i: number) => (
+                          <div key={i} className="p-3 rounded-xl bg-surface/40 border border-border-soft hover:border-secondary/30 transition-colors">
+                            <strong className="text-white text-sm block mb-1 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-tertiary" /> {rec.skill}</strong>
+                            <p className="text-xs text-text-secondary">{rec.reason}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Next Skills */}
-                  <div>
-                    <h4 className="text-xs font-mono text-text-faint uppercase mb-3 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5" /> Recommended Next Skills</h4>
-                    <div className="space-y-3">
-                      {insights.nextSkillRecommendations.map((rec: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl bg-surface/40 border border-border-soft hover:border-secondary/30 transition-colors">
-                          <strong className="text-white text-sm block mb-1 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-tertiary" /> {rec.skill}</strong>
-                          <p className="text-xs text-text-secondary">{rec.reason}</p>
-                        </div>
-                      ))}
+                    {/* Salary Outlook */}
+                    <div className="p-4 rounded-xl border border-secondary/20 bg-secondary/5">
+                      <h4 className="text-xs font-mono text-secondary uppercase mb-2">Salary Outlook</h4>
+                      <p className="text-sm text-white/90 leading-relaxed">{insights.salaryOutlook}</p>
                     </div>
-                  </div>
+                  </motion.div>
+                )}
+              </div>
+            </div>
 
-                  {/* Salary Outlook */}
-                  <div className="p-4 rounded-xl border border-secondary/20 bg-secondary/5">
-                    <h4 className="text-xs font-mono text-secondary uppercase mb-2">Salary Outlook</h4>
-                    <p className="text-sm text-white/90 leading-relaxed">{insights.salaryOutlook}</p>
-                  </div>
-                </motion.div>
+            {/* Leaderboard Panel */}
+            <div className="glass-panel rounded-3xl border border-border-strong p-6 space-y-4">
+              <h3 className="font-display font-bold text-white text-lg flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-tertiary" /> Credit Leaderboard
+              </h3>
+              {!leaderboard ? (
+                <div className="animate-pulse space-y-2">
+                  {[1, 2, 3].map(i => <div key={i} className="h-10 bg-surface/50 rounded-xl" />)}
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {leaderboard.map((user: any, idx: number) => (
+                    <div key={user._id} className="flex items-center justify-between p-3 rounded-xl border border-border-soft bg-surface/10">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs font-bold text-text-faint w-4">#{idx + 1}</span>
+                        <span className="text-sm text-white font-medium">{user.name}</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-primary">{user.credits} CR</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { OSLoader } from "@/components/os/OSShared";
@@ -426,6 +427,8 @@ function AICareerPanel({ stats, sessions }: { stats: any; sessions: any[] }) {
 // Sessions Timeline
 // ─────────────────────────────────────────────────────────────
 function SessionsTimeline({ sessions }: { sessions: any[] }) {
+  const completeSession = useMutation(api.sessions.completeSession);
+
   return (
     <div className="glass-panel rounded-3xl border border-border-strong p-7">
       <div className="flex items-center gap-3 mb-6">
@@ -455,12 +458,39 @@ function SessionsTimeline({ sessions }: { sessions: any[] }) {
                 })} · {session.durationMinutes} min
               </p>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-mono uppercase ${
-              session.status === "completed" ? "bg-secondary/10 text-secondary border border-secondary/20" :
-              session.status === "scheduled" ? "bg-primary/10 text-primary border border-primary/20" :
-              "bg-surface text-text-faint border border-border-soft"
-            }`}>
-              {session.status}
+            <div className="flex items-center gap-3">
+              <div className={`px-3 py-1 rounded-full text-xs font-mono uppercase ${
+                session.status === "completed" ? "bg-secondary/10 text-secondary border border-secondary/20" :
+                session.status === "scheduled" ? "bg-primary/10 text-primary border border-primary/20" :
+                "bg-surface text-text-faint border border-border-soft"
+              }`}>
+                {session.status}
+              </div>
+
+              {session.status === "scheduled" && (
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/os/sessions/${session._id}`}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-tertiary/20 text-tertiary border border-tertiary/30 hover:bg-tertiary hover:text-black transition-colors"
+                  >
+                    Join Room →
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      if (confirm("Mark this session as completed? Credits will be transferred.")) {
+                        try {
+                          await completeSession({ sessionId: session._id });
+                        } catch (err) {
+                          alert("Failed to complete session.");
+                        }
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-secondary text-background border border-secondary/30 hover:bg-secondary/80 transition-colors"
+                  >
+                    Complete
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         ))}

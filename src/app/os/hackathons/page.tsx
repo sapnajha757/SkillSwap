@@ -16,6 +16,8 @@ export default function HackathonsPage() {
   const seed = useMutation(api.hackathons.seed);
   const hackathons = useQuery(api.hackathons.list, {});
   const careerStats = useQuery(api.profiles.myCareerStats);
+  const profileData = useQuery(api.profiles.myProfile);
+  const currentUserId = profileData?.user?._id;
 
   // Auto-seed if empty
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function HackathonsPage() {
                 key={activeHackathon._id}
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
               >
-                <HackathonDetail hackathon={activeHackathon} />
+                <HackathonDetail hackathon={activeHackathon} currentUserId={currentUserId} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -150,7 +152,7 @@ function HackathonCard({ hackathon, isActive, onClick }: any) {
 // ─────────────────────────────────────────────────────────────
 // Hackathon Detail (Main)
 // ─────────────────────────────────────────────────────────────
-function HackathonDetail({ hackathon }: any) {
+function HackathonDetail({ hackathon, currentUserId }: any) {
   const teams = useQuery(api.hackathons.listTeams, { hackathonId: hackathon._id });
   const [showCreateTeam, setShowCreateTeam] = useState(false);
 
@@ -223,7 +225,7 @@ function HackathonDetail({ hackathon }: any) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {teams.map((team: any) => (
-              <TeamCard key={team._id} team={team} />
+              <TeamCard key={team._id} team={team} currentUserId={currentUserId} />
             ))}
           </div>
         )}
@@ -235,12 +237,13 @@ function HackathonDetail({ hackathon }: any) {
 // ─────────────────────────────────────────────────────────────
 // Team Card
 // ─────────────────────────────────────────────────────────────
-function TeamCard({ team }: any) {
+function TeamCard({ team, currentUserId }: any) {
   const apply = useMutation(api.hackathons.applyToTeam);
   const [applying, setApplying] = useState(false);
   const [role, setRole] = useState("");
   const [showApply, setShowApply] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [showMatchmaker, setShowMatchmaker] = useState(false);
 
   async function handleApply() {
     if (!role) return;
@@ -278,12 +281,27 @@ function TeamCard({ team }: any) {
           </div>
         ) : applied ? (
           <div className="pt-2 text-xs font-mono text-secondary flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Request Sent</div>
+        ) : currentUserId === team.creatorId ? (
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              onClick={() => setShowMatchmaker(true)}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs font-mono font-bold hover:bg-primary/20 transition-all shadow-[0_0_20px_rgba(99,102,241,0.05)]"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Find Teammates via AI
+            </button>
+          </div>
         ) : (
           <button onClick={() => setShowApply(true)} className="mt-2 text-xs font-bold text-white flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <UserPlus className="w-3.5 h-3.5" /> Apply to join
           </button>
         )}
       </div>
+
+      <AnimatePresence>
+        {showMatchmaker && (
+          <AIMatchmakerModal team={team} onClose={() => setShowMatchmaker(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -393,6 +411,127 @@ function IdeaGeneratorModal({ theme, careerContext, onClose }: any) {
         )}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AI Teammate Matchmaker Modal
+// ─────────────────────────────────────────────────────────────
+function AIMatchmakerModal({ team, onClose }: { team: any; onClose: () => void }) {
+  const getRecommendations = useAction(api.hackathonsAI.recommendTeammates);
+  const invite = useMutation(api.hackathons.inviteTeammate);
+  
+  const [loading, setLoading] = useState(true);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [invitedIds, setInvitedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await getRecommendations({ teamId: team._id });
+        setRecommendations(res.recommendations || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [team._id, getRecommendations]);
+
+  async function handleInvite(userId: string, name: string) {
+    setInvitingId(userId);
+    try {
+      const role = team.lookingFor[0] || "Builder";
+      await invite({ teamId: team._id, userId, role });
+      setInvitedIds((prev) => [...prev, userId]);
+    } catch (err) {
+      console.error(err);
+      alert("Invite failed. User might already be invited.");
+    } finally {
+      setInvitingId(null);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-background/80 backdrop-blur-xl"
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 30 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 30 }}
+        className="w-full max-w-2xl glass-panel rounded-3xl p-8 border border-border-strong relative shadow-2xl overflow-hidden"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 text-text-faint hover:text-white transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-display text-xl font-bold text-white">AI Team Matchmaker</h3>
+            <p className="text-xs text-text-faint font-mono mt-0.5">Matching candidates for: {team.name}</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-16 text-center flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-text-secondary font-mono">Running vector similarity matching...</p>
+          </div>
+        ) : recommendations.length === 0 ? (
+          <div className="py-12 text-center text-text-secondary">
+            No compatible builders found on the platform yet.
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
+            {recommendations.map((rec) => {
+              const isInvited = invitedIds.includes(rec.userId);
+              return (
+                <div
+                  key={rec.userId}
+                  className="p-5 rounded-2xl border border-border-soft bg-surface/30 flex items-start justify-between gap-4"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="font-bold text-white text-base">{rec.name}</span>
+                      <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono font-bold border border-primary/20">
+                        {rec.score}% match
+                      </span>
+                    </div>
+                    <p className="text-sm text-text-secondary leading-relaxed">
+                      {rec.compatibilityReason}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => handleInvite(rec.userId, rec.name)}
+                    disabled={isInvited || invitingId === rec.userId}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all flex-shrink-0 ${
+                      isInvited
+                        ? "bg-secondary/20 text-secondary border border-secondary/30"
+                        : "bg-primary text-background hover:bg-primary/80"
+                    }`}
+                  >
+                    {isInvited ? "Invited ✓" : invitingId === rec.userId ? "Inviting..." : "Invite"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }
 

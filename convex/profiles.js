@@ -88,3 +88,49 @@ export const myCareerStats = query({
     };
   },
 });
+
+// ── Query candidate profiles with their registered skills ─────
+export const listCandidateProfilesWithSkills = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    const allProfiles = await ctx.db.query("profiles").collect();
+    const candidates = allProfiles.filter(
+      (p) => p.userId !== userId && p.name !== "🤖 AI Teammate (PM)"
+    );
+
+    return await Promise.all(
+      candidates.map(async (p) => {
+        const posts = await ctx.db
+          .query("skillPosts")
+          .withIndex("by_userId", (q) => q.eq("userId", p.userId))
+          .collect();
+        const teachSkills = posts.filter((post) => post.type === "teach").map(post => post.skill);
+        const learnSkills = posts.filter((post) => post.type === "learn").map(post => post.skill);
+        return {
+          userId: p.userId,
+          name: p.name,
+          bio: p.bio || "",
+          teachSkills,
+          learnSkills,
+        };
+      })
+    );
+  },
+});
+
+// ── Query Leaderboard: Top Users by Credit Balance ────────────
+export const getLeaderboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const allProfiles = await ctx.db.query("profiles").collect();
+    return allProfiles
+      .map(p => ({
+        _id: p._id,
+        name: p.name,
+        credits: p.credits ?? 100,
+      }))
+      .sort((a, b) => b.credits - a.credits)
+      .slice(0, 5);
+  },
+});
